@@ -30,9 +30,9 @@ class TrackingRequestHandler(BaseHTTPRequestHandler):
                 try:
                     c.execute(f"INSERT INTO {trackers_table} ({uuid_col}, comment, hit_count) VALUES (?, ?, 0)",
                                                 (new_uuid, split_path[-1]))
+                    self.wfile.write(bytes(new_uuid + '\n', "UTF8"))
                 except sqlite3.IntegrityError:
-                    pass
-                self.wfile.write(bytes(new_uuid + '\n', "UTF8"))
+                    self.wfile.write(bytes("failure" + '\n', "UTF8"))
             conn.commit()
             return
         try:
