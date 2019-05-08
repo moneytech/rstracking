@@ -10,7 +10,6 @@ class TrackingRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         # Send response status code
         split_path = self.path.split('/')
-        print(split_path)
         if split_path[1] == 'api':
             if split_path[2] != secret_key:
                 self.send_response(403)
@@ -22,12 +21,19 @@ class TrackingRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             if self.path.endswith('history'):
                 for row in c.execute(f'SELECT * FROM {history_table} ORDER BY unix_time'):
-                    print(row)
                     self.wfile.write(bytes(str(row)[1:-1] + '\n', "UTF8"))
-            if self.path.endswith('trackers'):
+            elif self.path.endswith('trackers'):
                 for row in c.execute(f'SELECT * FROM {trackers_table} ORDER BY hit_count'):
-                    print(row)
                     self.wfile.write(bytes(str(row)[1:-1] + '\n', "UTF8"))
+            elif len(split_path) > 3:
+                new_uuid = str(uuid.uuid4())
+                try:
+                    c.execute(f"INSERT INTO {trackers_table} ({uuid_col}, comment, hit_count) VALUES (?, ?, 0)",
+                                                (new_uuid, split_path[-1]))
+                except sqlite3.IntegrityError:
+                    pass
+                self.wfile.write(bytes(new_uuid + '\n', "UTF8"))
+            conn.commit()
             return
         try:
             uuid.UUID(split_path[-1])
@@ -43,7 +49,7 @@ class TrackingRequestHandler(BaseHTTPRequestHandler):
                 user_agent = self.headers.get("User-Agent")
             if "Accept-Language" in self.headers:
                 accept_language = self.headers.get("Accept-Language")            
-            receive_request(split_path[-1], ip_address, user_agent, accept_language)
+            receive_request(split_path[-1].lower(), ip_address, user_agent, accept_language)
             self.wfile.write(ret_gif)
         except (ValueError):
             self.send_response(404)
