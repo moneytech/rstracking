@@ -109,7 +109,7 @@ try:
     else:
         conn = sqlite3.connect(sqlite_file)
         c = conn.cursor()
-    secret_key = "d85c86194e70613f2babd30ac6af2730568043768452a8c4"
+    secret_key = ""
     if secret_key == "":
         secret_key = os.urandom(24).hex()
     print(f"Your secret URL: /api/{secret_key}")
