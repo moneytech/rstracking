@@ -118,7 +118,7 @@ if not os.path.isfile(sqlite_file):
     c = conn.cursor()
     initialize_database()
     conn.close()
-secret_key = "70924a89154d5a7d8d60393a0880828e795bdb17b2cba43b"
+secret_key = ""
 if secret_key == "":
     secret_key = os.urandom(24).hex()
 print(f"Your secret URL: /api/{secret_key}")
