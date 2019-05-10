@@ -20,19 +20,14 @@ class TrackingRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type','text/plain')
             self.end_headers()
             if self.path.endswith('history'):
-                for row in c.execute(f'SELECT * FROM {history_table} ORDER BY unix_time'):
+                for row in c.execute(f'SELECT * FROM history ORDER BY access_time'):
                     self.wfile.write(bytes(str(row)[1:-1] + '\n', "UTF8"))
             elif self.path.endswith('trackers'):
-                for row in c.execute(f'SELECT * FROM {trackers_table} ORDER BY hit_count'):
+                for row in c.execute(f'SELECT * FROM trackers ORDER BY hit_count'):
                     self.wfile.write(bytes(str(row)[1:-1] + '\n', "UTF8"))
             elif len(split_path) > 3:
-                new_uuid = str(uuid.uuid4())
-                try:
-                    c.execute(f"INSERT INTO {trackers_table} ({uuid_col}, comment, hit_count) VALUES (?, ?, 0)",
-                                                (new_uuid, split_path[-1]))
-                    self.wfile.write(bytes(new_uuid + '\n', "UTF8"))
-                except sqlite3.IntegrityError:
-                    self.wfile.write(bytes("failure" + '\n', "UTF8"))
+                tracker_id = get_new_tracker(None, split_path[-1])
+                self.wfile.write(bytes(tracker_id + '\n', "UTF8"))
             conn.commit()
             return
         try:
@@ -58,37 +53,45 @@ class TrackingRequestHandler(BaseHTTPRequestHandler):
         # Send headers
         return
 
-def receive_request(request_uuid, ip_address, user_agent, accept_language):
-    c.execute(f"INSERT INTO {history_table} ({uuid_col}, ip_address, user_agent, accept_language, unix_time) VALUES (?, ?, ?, ?, ?)",
-                                            (request_uuid, ip_address, user_agent, accept_language, int(time.time())))
-
+def get_new_tracker(grouping, description):
+    new_uuid = str(uuid.uuid4())
     try:
-        c.execute(f"INSERT INTO {trackers_table} ({uuid_col}, hit_count) VALUES (?, 1)",
-                                    (request_uuid,))
+        c.execute(f"INSERT INTO trackers (uuid, grouping, description, hit_count) VALUES (?, ?, ?, 0)",
+                                    (new_uuid, grouping, description))
+        return new_uuid
     except sqlite3.IntegrityError:
-        c.execute(f"UPDATE {trackers_table} SET hit_count = hit_count + 1 WHERE {uuid_col} = ?", (request_uuid,))
+        return "failure"
+
+def receive_request(request_id, ip_address, user_agent, accept_language):
+    c.execute(f"INSERT INTO history"
+              f"(tracker_id, ip_address, user_agent, accept_language, access_time)"
+              f" VALUES (?, ?, ?, ?, ?)",
+                (request_id, ip_address, user_agent, accept_language, int(time.time())))
+    try:
+        c.execute(f"INSERT INTO trackers (uuid, hit_count) VALUES (?, 1)", (request_id,))
+    except sqlite3.IntegrityError:
+        c.execute(f"UPDATE trackers SET hit_count = hit_count + 1 WHERE uuid = ?", (request_id,))
     conn.commit()
     print("received request")
 
 def initialize_database():
-    c.execute(f'CREATE TABLE IF NOT EXISTS {history_table} ({uuid_col} TEXT)')
-    c.execute(f'CREATE TABLE IF NOT EXISTS {trackers_table} ({uuid_col} TEXT PRIMARY KEY)')
+    c.execute(f'CREATE TABLE trackers ('
+              f'uuid TEXT PRIMARY KEY NOT NULL,'
+              f'grouping TEXT,'
+              f'description TEXT,'
+              f'hit_count INTEGER NOT NULL'
+              f')')
 
-    add_history_cols = [("ip_address", "INTEGER"),
-                        ("user_agent", "TEXT"),
-                        ("accept_language", "TEXT"),
-                        ("unix_time", "INTEGER"),
-                        ("country", "TEXT")]
-
-    add_trackers_cols = [("grouping", "TEXT"),
-                         ("comment", "TEXT"),
-                         ("hit_count", "INTEGER")]
-
-    for col in add_history_cols:
-        c.execute(f'ALTER TABLE {history_table} ADD COLUMN {col[0]} {col[1]}')
-
-    for col in add_trackers_cols:
-        c.execute(f'ALTER TABLE {trackers_table} ADD COLUMN {col[0]} {col[1]}')
+    c.execute(f'CREATE TABLE history ('
+              f'tracker_id TEXT NOT NULL,'
+              f'ip_address INTEGER NOT NULL,'
+              f'user_agent TEXT,'
+              f'accept_language TEXT,'
+              f'access_time INTEGER NOT NULL,'
+              f'country TEXT,'
+              f'FOREIGN KEY (tracker_id) REFERENCES trackers(uuid)'
+              f')')
+    conn.commit()
 
 def start_server():
     print('starting server...') 
@@ -101,21 +104,20 @@ def start_server():
 
 gif_file = open("transparent.gif", "rb")
 ret_gif = gif_file.read()
-history_table = 'history'  # name of the table to be created
-trackers_table = 'trackers'  # name of the table to be created
+gif_file.close()
+history_table = 'history'  # name of the history table
+trackers_table = 'trackers'  # name of the trackers table
 sqlite_file = 'tracking.db'    # name of the sqlite database file
-uuid_col = 'uuid' # name of the column
 
 try:
     if not os.path.isfile(sqlite_file):
         conn = sqlite3.connect(sqlite_file)
         c = conn.cursor()
         initialize_database()
-        conn.commit()
     else:
         conn = sqlite3.connect(sqlite_file)
         c = conn.cursor()
-    secret_key = ""
+    secret_key = "70924a89154d5a7d8d60393a0880828e795bdb17b2cba43b"
     if secret_key == "":
         secret_key = os.urandom(24).hex()
     print(f"Your secret URL: /api/{secret_key}")
