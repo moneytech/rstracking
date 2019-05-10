@@ -7,7 +7,7 @@ python3 main.py
 ```
 
 ## Trackers
-`http://server/trackers/<VALID_UUID_4>.gif`
+`http://server/trackers/<VALID_UUID_V4>.gif`
 
 
 ## Admin Interface
